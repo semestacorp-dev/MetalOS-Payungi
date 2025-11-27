@@ -1,0 +1,8 @@
+{
+  "name": "MetalOS Payungi Dashboard",
+  "description": "A comprehensive operating system for Kelurahan Yosomulyo integrating Governance, Economy (WargaPay), Environment (Warga-Enviro), and Social Services driven by the Pancadaya philosophy.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
