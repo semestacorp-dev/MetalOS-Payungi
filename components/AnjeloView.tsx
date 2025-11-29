@@ -12,7 +12,7 @@ type ServiceType = 'bike' | 'food' | 'waste' | 'pickup' | null;
 type OrderStatus = 'idle' | 'searching' | 'found' | 'arrived' | 'ready_pickup';
 
 // Coordinates for Metro, Lampung (Approx. Pasar Payungi area)
-const USER_START_POS: [number, number] = [-5.1136, 105.3067]; // Pasar Yosomulyo
+const DEFAULT_START_POS: [number, number] = [-5.1136, 105.3067]; // Pasar Yosomulyo
 const DRIVER_START_POS: [number, number] = [-5.1180, 105.3090]; // Nearby
 
 const SAVED_LOCATIONS = [
@@ -29,10 +29,12 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
   
   // Location State
   const [locationName, setLocationName] = useState('Pasar Yosomulyo Pelangi');
+  const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_START_POS);
   const [isLocationMenuOpen, setIsLocationMenuOpen] = useState(false);
   
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
 
@@ -47,7 +49,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
     const map = L.map(mapRef.current, {
         zoomControl: false,
         attributionControl: false
-    }).setView(USER_START_POS, 16);
+    }).setView(DEFAULT_START_POS, 16);
 
     mapInstanceRef.current = map;
 
@@ -78,8 +80,8 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
     });
 
     // 4. Add Markers
-    L.marker(USER_START_POS, { icon: userIcon }).addTo(map);
-    L.marker([-5.1120, 105.3080], { icon: destIcon }).addTo(map); // Mock Destination
+    userMarkerRef.current = L.marker(DEFAULT_START_POS, { icon: userIcon }).addTo(map);
+    // L.marker([-5.1120, 105.3080], { icon: destIcon }).addTo(map); // Remove static dest marker
 
     // 5. Invalidate size to fix render issues
     setTimeout(() => map.invalidateSize(), 100);
@@ -89,6 +91,14 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
         mapInstanceRef.current = null;
     };
   }, []);
+
+  // --- Update User/Dest Marker when location changes ---
+  useEffect(() => {
+      if (userMarkerRef.current && mapInstanceRef.current) {
+          userMarkerRef.current.setLatLng(userLocation);
+          mapInstanceRef.current.flyTo(userLocation, 17);
+      }
+  }, [userLocation]);
 
   // --- Driver & Route Animation Logic ---
   useEffect(() => {
@@ -112,8 +122,8 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
             driverMarkerRef.current.setLatLng(driverPos);
         }
 
-        // Create/Update Route Line
-        const routePoints = [driverPos, USER_START_POS];
+        // Create/Update Route Line to Selected User Location
+        const routePoints = [driverPos, userLocation];
         if (!routeLineRef.current) {
              routeLineRef.current = L.polyline(routePoints, {
                 color: '#6366f1',
@@ -126,16 +136,16 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
             routeLineRef.current.setLatLngs(routePoints);
         }
 
-        // Calculate Distance & ETA
-        const dist = map.distance(driverPos, USER_START_POS); // meters
+        // Calculate Distance & ETA to Selected Location
+        const dist = map.distance(driverPos, userLocation); // meters
         const timeMin = Math.ceil(dist / 200); // rough estimate
         setEta(dist < 50 ? 'Sekarang' : `${timeMin} min`);
 
         // Animation Step (Move driver closer)
         if (status === 'found' && dist > 20) {
             const timer = setTimeout(() => {
-                const latDiff = (USER_START_POS[0] - driverPos[0]) * 0.05;
-                const lngDiff = (USER_START_POS[1] - driverPos[1]) * 0.05;
+                const latDiff = (userLocation[0] - driverPos[0]) * 0.05;
+                const lngDiff = (userLocation[1] - driverPos[1]) * 0.05;
                 setDriverPos([driverPos[0] + latDiff, driverPos[1] + lngDiff]);
             }, 1000); // Update every second
             return () => clearTimeout(timer);
@@ -154,7 +164,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
         }
         setDriverPos(DRIVER_START_POS); // Reset position
     }
-  }, [status, driverPos]);
+  }, [status, driverPos, userLocation]);
 
 
   // --- Actions ---
@@ -174,14 +184,14 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
 
   const handleLocationSelect = (location: typeof SAVED_LOCATIONS[0]) => {
       setLocationName(location.name);
+      setUserLocation(location.coords);
       setIsLocationMenuOpen(false);
-      mapInstanceRef.current?.flyTo(location.coords, 17);
   };
 
-  const handlePresetOrder = (locationName: string, coords: [number, number], service: ServiceType) => {
+  const handlePresetOrder = (name: string, coords: [number, number], service: ServiceType) => {
       // 1. Set Location
-      setLocationName(locationName);
-      mapInstanceRef.current?.flyTo(coords, 17);
+      setLocationName(name);
+      setUserLocation(coords);
       
       // 2. Trigger Order
       handleOrder(service);
@@ -191,7 +201,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
       console.log("--- ANJELO ACTIVITY LOG ---");
       console.log("Status:", status);
       console.log("Driver Position:", driverPos);
-      console.log("User Position:", USER_START_POS);
+      console.log("User Target:", userLocation);
       console.log("ETA:", eta);
       console.log("Service:", selectedService);
       console.log("Location:", locationName);
@@ -216,12 +226,21 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
       
       {/* TOP NAV (Overlay) */}
       <div className="absolute top-0 left-0 right-0 z-[400] p-4 flex justify-between items-start bg-gradient-to-b from-black/40 to-transparent pointer-events-none">
-        <button 
-            onClick={onBack} 
-            className="p-2 bg-white rounded-full shadow-md text-gray-700 pointer-events-auto hover:bg-gray-100 transition-transform active:scale-95"
-        >
-            <ArrowLeft size={24} />
-        </button>
+        <div className="flex items-center space-x-3 pointer-events-auto">
+            <button 
+                onClick={onBack} 
+                className="p-2 bg-white rounded-full shadow-md text-gray-700 hover:bg-gray-100 transition-transform active:scale-95"
+            >
+                <ArrowLeft size={24} />
+            </button>
+            <button 
+                onClick={onBack}
+                className="p-2 bg-white rounded-full shadow-md text-gray-700 hover:bg-gray-100 transition-transform active:scale-95"
+                title="Home Screen"
+            >
+                <Home size={24} />
+            </button>
+        </div>
 
         <div className="flex flex-col items-end space-y-2 pointer-events-auto">
             {/* Location Selector Trigger */}
@@ -319,6 +338,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
                             <Bike size={20} />
                         </div>
                         <span className="text-[10px] font-bold text-gray-700">Bike</span>
+                        <span className="text-[9px] text-gray-500 mt-0.5 text-center leading-tight px-1">Ojek Desa</span>
                     </button>
                     <button 
                         onClick={() => handleOrder('food')}
@@ -329,6 +349,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
                             <Utensils size={20} />
                         </div>
                         <span className="text-[10px] font-bold text-gray-700">Food</span>
+                        <span className="text-[9px] text-gray-500 mt-0.5 text-center leading-tight px-1">Kuliner</span>
                     </button>
                     <button 
                         onClick={() => handleOrder('waste')}
@@ -339,6 +360,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
                             <Trash2 size={20} />
                         </div>
                         <span className="text-[10px] font-bold text-gray-700">Sampah</span>
+                        <span className="text-[9px] text-gray-500 mt-0.5 text-center leading-tight px-1">Jemput</span>
                     </button>
                      <button 
                         onClick={() => handleOrder('pickup')}
@@ -349,6 +371,7 @@ export const AnjeloView: React.FC<AnjeloViewProps> = ({ onBack }) => {
                             <Package size={20} />
                         </div>
                         <span className="text-[10px] font-bold text-gray-700">Pick Up</span>
+                        <span className="text-[9px] text-gray-500 mt-0.5 text-center leading-tight px-1">Kurir</span>
                     </button>
                 </div>
 

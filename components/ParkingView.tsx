@@ -17,7 +17,7 @@ interface ParkingLog {
 }
 
 const ParkingView: React.FC<ParkingViewProps> = ({ user = MOCK_USER }) => {
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MAP' | 'POS'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MAP' | 'POS'>('MAP');
   const [zones, setZones] = useState<ParkingZone[]>(PARKING_ZONES);
   const [selectedZone, setSelectedZone] = useState<ParkingZone | null>(null);
   const [isVisitorMode, setIsVisitorMode] = useState(false);

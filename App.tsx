@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import GovernanceView from './components/GovernanceView';
@@ -19,12 +19,12 @@ import BerdayaView from './components/BerdayaView';
 import AnjeloSystem from './components/AnjeloSystem';
 import EducationView from './components/EducationView';
 import { ViewMode, CitizenProfile } from './types';
-import { Bell, Search, Menu, ChevronDown, Check, Loader2, RefreshCw, Home, ShoppingBag, QrCode, Users, User, Sparkles, Wifi, Trash2, Phone, Activity } from 'lucide-react';
+import { Bell, Search, Menu, ChevronDown, Check, Loader2, RefreshCw, Home, ShoppingBag, QrCode, Users, User, Sparkles, Wifi, Trash2, Phone, Activity, Camera, Upload, X } from 'lucide-react';
 import { MOCK_USER, AVAILABLE_USERS } from './constants';
 
 const App: React.FC = () => {
   const [isBooting, setIsBooting] = useState(true);
-  const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.DASHBOARD);
+  const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.PARKING);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // New state for desktop/tablet sidebar
   
@@ -32,6 +32,12 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<CitizenProfile>(AVAILABLE_USERS[0]); // Default to first user
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isContextSwitching, setIsContextSwitching] = useState(false);
+
+  // Camera & Profile Photo State
+  const [showCamera, setShowCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // AI Assistant State (Lifted)
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
@@ -45,6 +51,61 @@ const App: React.FC = () => {
     service: 'PACKAGE' | 'RIDE' | 'CASH' | 'TRASH' | 'DOCS' | null;
     note: string;
   }>({ isOpen: false, service: null, note: '' });
+
+  // Camera Functions
+  const startCamera = async () => {
+    try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setStream(mediaStream);
+        setShowCamera(true);
+        // Ensure dropdown closes when camera opens
+        setIsUserMenuOpen(false); 
+    } catch (err) {
+        console.error("Camera access denied", err);
+        alert("Akses kamera ditolak atau tidak tersedia. Silakan gunakan upload foto.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+    }
+    setShowCamera(false);
+  };
+
+  useEffect(() => {
+      if (showCamera && videoRef.current && stream) {
+          videoRef.current.srcObject = stream;
+      }
+  }, [showCamera, stream]);
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(videoRef.current, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            setCurrentUser(prev => ({ ...prev, photoUrl: dataUrl }));
+            stopCamera();
+        }
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setCurrentUser(prev => ({ ...prev, photoUrl: reader.result as string }));
+            setIsUserMenuOpen(false); // Close menu after upload
+        };
+        reader.readAsDataURL(file);
+    }
+  };
 
   const handleSwitchUser = (user: CitizenProfile) => {
     setIsUserMenuOpen(false);
@@ -121,6 +182,34 @@ const App: React.FC = () => {
           <div className="absolute bottom-[-20%] left-[20%] w-[60%] h-[60%] bg-gradient-to-t from-pink-600/40 to-orange-500/40 rounded-full mix-blend-screen filter blur-[120px] animate-blob animation-delay-4000"></div>
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]"></div>
       </div>
+
+      {/* Camera Modal Overlay */}
+      {showCamera && (
+          <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
+              <div className="relative w-full h-full max-w-2xl max-h-[80vh] bg-black flex flex-col items-center">
+                  <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline 
+                      className="w-full h-full object-cover rounded-2xl border-4 border-slate-800"
+                  />
+                  <div className="absolute bottom-8 left-0 right-0 flex justify-center items-center gap-8">
+                      <button 
+                          onClick={stopCamera}
+                          className="bg-slate-800 text-white p-4 rounded-full hover:bg-slate-700 transition"
+                      >
+                          <X size={24} />
+                      </button>
+                      <button 
+                          onClick={capturePhoto}
+                          className="bg-white p-2 rounded-full border-4 border-slate-300 hover:border-white transition"
+                      >
+                          <div className="w-16 h-16 bg-white rounded-full border-2 border-black"></div>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Context Switch Overlay */}
       {isContextSwitching && (
@@ -215,9 +304,9 @@ const App: React.FC = () => {
                             <div className="relative">
                                 <div className="w-9 h-9 rounded-full p-0.5 bg-gradient-to-tr from-white/50 to-white/10 shadow-sm ring-1 ring-white/20">
                                     <img 
-                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.avatarSeed}`} 
+                                        src={currentUser.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.avatarSeed}`} 
                                         alt="User" 
-                                        className="w-full h-full rounded-full bg-slate-800"
+                                        className="w-full h-full rounded-full bg-slate-800 object-cover"
                                     />
                                 </div>
                                 <div className="absolute bottom-0 right-0 bg-green-500 w-2.5 h-2.5 rounded-full border-2 border-slate-900 shadow-[0_0_5px_#22c55e]"></div>
@@ -231,28 +320,56 @@ const App: React.FC = () => {
 
                         {/* Dropdown Menu */}
                         {isUserMenuOpen && (
-                            <div className="absolute right-0 top-full mt-3 w-64 bg-slate-900/80 backdrop-blur-2xl rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] border border-white/10 py-2 z-50 animate-in fade-in slide-in-from-top-2 ring-1 ring-white/5">
-                                <div className="px-5 py-3 border-b border-white/5 mb-1">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Switch Identity</span>
-                                </div>
-                                {AVAILABLE_USERS.map((user) => (
-                                    <button 
-                                        key={user.id}
-                                        onClick={() => handleSwitchUser(user)}
-                                        className="w-full text-left px-5 py-3 hover:bg-white/5 flex items-center justify-between group transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-full overflow-hidden border transition-all ${currentUser.id === user.id ? 'border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'border-white/10'}`}>
-                                                <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.avatarSeed}`} alt={user.name} />
-                                            </div>
-                                            <div>
-                                                <p className={`text-sm font-bold transition ${currentUser.id === user.id ? 'text-cyan-400' : 'text-slate-200'}`}>{user.name}</p>
-                                                <p className="text-xs text-slate-500">{user.role}</p>
+                            <div className="absolute right-0 top-full mt-3 w-72 bg-slate-900/90 backdrop-blur-2xl rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] border border-white/10 py-2 z-50 animate-in fade-in slide-in-from-top-2 ring-1 ring-white/5 flex flex-col overflow-hidden">
+                                
+                                {/* Current User Profile & Edit Photo */}
+                                <div className="p-5 border-b border-white/10 flex flex-col items-center bg-white/5">
+                                    <div className="relative w-20 h-20 mb-3 group">
+                                        <img 
+                                            src={currentUser.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.avatarSeed}`} 
+                                            alt="User" 
+                                            className="w-full h-full rounded-full bg-slate-800 border-2 border-white/20 object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                            <div className="flex gap-2">
+                                                <button onClick={startCamera} className="p-2 bg-white/20 rounded-full hover:bg-white/40 transition" title="Kamera">
+                                                    <Camera size={16} className="text-white" />
+                                                </button>
+                                                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-white/20 rounded-full hover:bg-white/40 transition" title="Upload Foto">
+                                                    <Upload size={16} className="text-white" />
+                                                </button>
                                             </div>
                                         </div>
-                                        {currentUser.id === user.id && <Check size={14} className="text-cyan-400" />}
-                                    </button>
-                                ))}
+                                    </div>
+                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
+                                    
+                                    <h3 className="font-bold text-white text-lg">{currentUser.name}</h3>
+                                    <p className="text-xs text-slate-400">{currentUser.role}</p>
+                                </div>
+
+                                <div className="px-5 py-2 border-b border-white/5">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Switch Identity</span>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto">
+                                    {AVAILABLE_USERS.map((user) => (
+                                        <button 
+                                            key={user.id}
+                                            onClick={() => handleSwitchUser(user)}
+                                            className="w-full text-left px-5 py-3 hover:bg-white/5 flex items-center justify-between group transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-full overflow-hidden border transition-all ${currentUser.id === user.id ? 'border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'border-white/10'}`}>
+                                                    <img src={user.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.avatarSeed}`} alt={user.name} className="w-full h-full object-cover" />
+                                                </div>
+                                                <div>
+                                                    <p className={`text-sm font-bold transition ${currentUser.id === user.id ? 'text-cyan-400' : 'text-slate-200'}`}>{user.name}</p>
+                                                    <p className="text-xs text-slate-500 truncate max-w-[140px]">{user.role}</p>
+                                                </div>
+                                            </div>
+                                            {currentUser.id === user.id && <Check size={14} className="text-cyan-400" />}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -279,52 +396,58 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* MOBILE BOTTOM NAVIGATION - DOCKED & COMPACT */}
+      {/* MOBILE BOTTOM NAVIGATION - COMPACT GRID LAYOUT */}
       {!isTvMode && (
-        <div className="fixed bottom-0 left-0 right-0 w-full bg-slate-900/90 backdrop-blur-3xl border-t border-white/10 md:hidden z-40 rounded-t-3xl shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] flex justify-around items-end px-4 pb-4 pt-2 ring-1 ring-white/5">
+        <div className="fixed bottom-0 left-0 right-0 w-full bg-slate-900/95 backdrop-blur-3xl border-t border-white/10 md:hidden z-40 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] grid grid-cols-5 items-end pb-1 pt-1">
             <button 
                 onClick={() => setCurrentView(ViewMode.DASHBOARD)}
-                className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all duration-300 ${currentView === ViewMode.DASHBOARD ? 'text-white' : 'text-slate-400 hover:text-white'}`}
+                className={`relative flex flex-col items-center justify-center h-14 w-full transition-all duration-300 group ${currentView === ViewMode.DASHBOARD ? 'text-cyan-400' : 'text-slate-400 hover:text-white'}`}
             >
-                <Home size={20} strokeWidth={currentView === ViewMode.DASHBOARD ? 2.5 : 2} />
-                {currentView === ViewMode.DASHBOARD && <span className="absolute -bottom-2 w-1 h-1 bg-cyan-400 rounded-full shadow-[0_0_5px_cyan]"></span>}
+                <div className={`p-1.5 rounded-xl transition-all ${currentView === ViewMode.DASHBOARD ? 'bg-cyan-500/20 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : ''}`}>
+                    <Home size={18} strokeWidth={currentView === ViewMode.DASHBOARD ? 2.5 : 2} />
+                </div>
+                <span className="text-[9px] font-bold mt-1">Home</span>
             </button>
             
             <button 
                 onClick={() => setCurrentView(ViewMode.BERDAYA)}
-                className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all duration-300 ${currentView === ViewMode.BERDAYA ? 'text-orange-400' : 'text-slate-400 hover:text-white'}`}
+                className={`relative flex flex-col items-center justify-center h-14 w-full transition-all duration-300 group ${currentView === ViewMode.BERDAYA ? 'text-orange-400' : 'text-slate-400 hover:text-white'}`}
             >
-                <ShoppingBag size={20} strokeWidth={currentView === ViewMode.BERDAYA ? 2.5 : 2} />
-                {currentView === ViewMode.BERDAYA && <span className="absolute -bottom-2 w-1 h-1 bg-orange-400 rounded-full shadow-[0_0_5px_orange]"></span>}
+                <div className={`p-1.5 rounded-xl transition-all ${currentView === ViewMode.BERDAYA ? 'bg-orange-500/20 shadow-[0_0_10px_rgba(251,146,60,0.3)]' : ''}`}>
+                    <ShoppingBag size={18} strokeWidth={currentView === ViewMode.BERDAYA ? 2.5 : 2} />
+                </div>
+                <span className="text-[9px] font-bold mt-1">Niaga</span>
             </button>
             
-            {/* Center Action (Pay/Scan) - Smaller & Lower */}
-            <div className="relative -top-5">
+            {/* Center Action (Pay/Scan) - Integrated */}
+            <div className="relative flex justify-center items-end h-full w-full">
                 <button 
                     onClick={() => setCurrentView(ViewMode.ECONOMY)}
-                    className="w-14 h-14 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-[0_5px_20px_rgba(59,130,246,0.5)] text-white hover:scale-105 active:scale-95 transition border-[3px] border-slate-900 ring-1 ring-white/10"
+                    className="absolute -top-3 w-12 h-12 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-[0_5px_20px_rgba(59,130,246,0.5)] text-white hover:scale-105 active:scale-95 transition border-[3px] border-slate-900 ring-1 ring-white/10"
                 >
-                    <QrCode size={24} strokeWidth={2.5} />
+                    <QrCode size={20} strokeWidth={2.5} />
                 </button>
+                <span className="text-[9px] font-bold text-blue-400 mt-auto mb-1">Scan</span>
             </div>
 
             <button 
                 onClick={() => setCurrentView(ViewMode.SOCIAL)}
-                className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all duration-300 ${currentView === ViewMode.SOCIAL ? 'text-red-400' : 'text-slate-400 hover:text-white'}`}
+                className={`relative flex flex-col items-center justify-center h-14 w-full transition-all duration-300 group ${currentView === ViewMode.SOCIAL ? 'text-red-400' : 'text-slate-400 hover:text-white'}`}
             >
-                <Users size={20} strokeWidth={currentView === ViewMode.SOCIAL ? 2.5 : 2} />
-                {currentView === ViewMode.SOCIAL && <span className="absolute -bottom-2 w-1 h-1 bg-red-400 rounded-full shadow-[0_0_5px_red]"></span>}
+                <div className={`p-1.5 rounded-xl transition-all ${currentView === ViewMode.SOCIAL ? 'bg-red-500/20 shadow-[0_0_10px_rgba(248,113,113,0.3)]' : ''}`}>
+                    <Users size={18} strokeWidth={currentView === ViewMode.SOCIAL ? 2.5 : 2} />
+                </div>
+                <span className="text-[9px] font-bold mt-1">Sosial</span>
             </button>
             
-            {/* NEW: WargaNet with Activity Icon (Pulse) to match App Logo */}
             <button 
                 onClick={() => setCurrentView(ViewMode.ENVIRONMENT)}
-                className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all duration-300 group ${currentView === ViewMode.ENVIRONMENT ? 'text-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                className={`relative flex flex-col items-center justify-center h-14 w-full transition-all duration-300 group ${currentView === ViewMode.ENVIRONMENT ? 'text-green-400' : 'text-slate-400 hover:text-white'}`}
             >
-                <div className="relative">
-                    <Activity size={20} strokeWidth={currentView === ViewMode.ENVIRONMENT ? 2.5 : 2} />
+                <div className={`p-1.5 rounded-xl transition-all ${currentView === ViewMode.ENVIRONMENT ? 'bg-green-500/20 shadow-[0_0_10px_rgba(74,222,128,0.3)]' : ''}`}>
+                    <Activity size={18} strokeWidth={currentView === ViewMode.ENVIRONMENT ? 2.5 : 2} />
                 </div>
-                {currentView === ViewMode.ENVIRONMENT && <span className="absolute -bottom-2 w-1 h-1 bg-cyan-400 rounded-full shadow-[0_0_5px_#22d3ee]"></span>}
+                <span className="text-[9px] font-bold mt-1">Net</span>
             </button>
         </div>
       )}

@@ -64,6 +64,7 @@ export interface CitizenProfile {
   balance: number;
   points: number; // Social points
   avatarSeed?: string; // For UI avatar
+  photoUrl?: string; // For uploaded/captured profile picture
   mandiriVA?: string; // Mandiri Virtual Account number
 }
 
